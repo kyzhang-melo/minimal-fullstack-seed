@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import ThoughtInput from '@/components/ThoughtInput'
 import ThoughtCard from '@/components/ThoughtCard'
 import EncouragementModal from '@/components/EncouragementModal'
+import { supabase } from '@/lib/supabase'
 
 interface Thought {
   id: string
@@ -16,27 +17,50 @@ export default function Home() {
   const [thoughts, setThoughts] = useState<Thought[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [newThoughtId, setNewThoughtId] = useState<string | null>(null)
-  
-  // 弹窗状态
   const [modalOpen, setModalOpen] = useState(false)
   const [currentThought, setCurrentThought] = useState('')
   const [currentEncouragement, setCurrentEncouragement] = useState('')
 
-  // 初始加载想法列表
+  // ========== 方式一：普通 HTTP 请求（已注释）==========
+  // useEffect(() => { fetchThoughts() }, [])
+  // async function fetchThoughts() {
+  //   const res = await fetch('/api/thoughts')
+  //   const data = await res.json()
+  //   if (Array.isArray(data)) setThoughts(data)
+  // }
+
+  // ========== 方式二：Supabase Realtime 实时订阅 ==========
   useEffect(() => {
-    fetchThoughts()
+    // 1. 获取初始数据
+    fetchInitialThoughts()
+    
+    // 2. 建立 WebSocket 实时订阅
+    const channel = supabase
+      .channel('thoughts-channel')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'thoughts' },
+        (payload) => {
+          console.log('[Realtime] 收到推送:', payload)
+          const newThought = payload.new as Thought
+          setThoughts((prev) => {
+            if (prev.find(t => t.id === newThought.id)) return prev
+            return [newThought, ...prev]
+          })
+        }
+      )
+      .subscribe()
+
+    // 3. 清理订阅
+    return () => { channel.unsubscribe() }
   }, [])
 
-  async function fetchThoughts() {
-    try {
-      const res = await fetch('/api/thoughts')
-      const data = await res.json()
-      if (Array.isArray(data)) {
-        setThoughts(data)
-      }
-    } catch (error) {
-      console.error('获取想法失败:', error)
-    }
+  async function fetchInitialThoughts() {
+    const { data } = await supabase
+      .from('thoughts')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (data) setThoughts(data)
   }
 
   async function handleSubmit(content: string) {
@@ -47,28 +71,22 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content })
       })
-      
       const data = await res.json()
+      if (data.error) { alert(data.error); return }
       
-      if (data.error) {
-        alert(data.error)
-        return
-      }
-      
-      // 添加到列表顶部
-      setThoughts(prev => [data, ...prev])
+      // 乐观更新（可选，因为实时订阅也会推送）
+      setThoughts(prev => {
+        if (prev.find(t => t.id === data.id)) return prev
+        return [data, ...prev]
+      })
       setNewThoughtId(data.id)
       
-      // 显示弹窗
       setCurrentThought(data.content)
       setCurrentEncouragement(data.encouragement)
       setModalOpen(true)
-      
-      // 清除新标记
       setTimeout(() => setNewThoughtId(null), 1000)
     } catch (error) {
-      console.error('提交失败:', error)
-      alert('提交失败，请重试')
+      alert('提交失败')
     } finally {
       setIsLoading(false)
     }
@@ -76,7 +94,6 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-amber-50 via-pink-50 to-purple-100">
-      {/* 背景装饰 */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-72 h-72 bg-pink-200/30 rounded-full blur-3xl"></div>
         <div className="absolute bottom-20 right-10 w-96 h-96 bg-purple-200/30 rounded-full blur-3xl"></div>
@@ -84,22 +101,21 @@ export default function Home() {
       </div>
 
       <div className="relative z-10 max-w-3xl mx-auto px-4 py-12">
-        {/* 标题区域 */}
         <div className="text-center mb-12">
           <h1 className="text-5xl font-bold bg-gradient-to-r from-amber-500 via-pink-500 to-purple-500 bg-clip-text text-transparent mb-4">
             EncourageMe
           </h1>
-          <p className="text-gray-500 text-lg">
-            分享你的想法，收获温暖鼓励
-          </p>
+          <p className="text-gray-500 text-lg">分享你的想法，收获温暖鼓励</p>
+          <div className="mt-2 flex items-center justify-center gap-2">
+            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+            <span className="text-xs text-green-600">实时同步已开启</span>
+          </div>
         </div>
 
-        {/* 输入区域 */}
         <div className="mb-12">
           <ThoughtInput onSubmit={handleSubmit} isLoading={isLoading} />
         </div>
 
-        {/* 想法列表 */}
         <div>
           <div className="flex items-center justify-center gap-3 mb-8">
             <div className="h-px flex-1 bg-gradient-to-r from-transparent to-pink-300/50"></div>
@@ -110,31 +126,19 @@ export default function Home() {
 
           {thoughts.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-gray-400 text-sm">
-                还没有想法，写下第一个吧 💭
-              </p>
+              <p className="text-gray-400 text-sm">还没有想法，写下第一个吧 💭</p>
             </div>
           ) : (
             <div className="space-y-4">
               {thoughts.map((thought) => (
-                <ThoughtCard 
-                  key={thought.id} 
-                  thought={thought}
-                  isNew={thought.id === newThoughtId}
-                />
+                <ThoughtCard key={thought.id} thought={thought} isNew={thought.id === newThoughtId} />
               ))}
             </div>
           )}
         </div>
       </div>
 
-      {/* 鼓励语弹窗 */}
-      <EncouragementModal
-        isOpen={modalOpen}
-        thought={currentThought}
-        encouragement={currentEncouragement}
-        onClose={() => setModalOpen(false)}
-      />
+      <EncouragementModal isOpen={modalOpen} thought={currentThought} encouragement={currentEncouragement} onClose={() => setModalOpen(false)} />
     </main>
   )
 }
