@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import ThoughtInput from '@/components/ThoughtInput'
 import ThoughtCard from '@/components/ThoughtCard'
 import EncouragementModal from '@/components/EncouragementModal'
+import ApiKeyInput from '@/components/ApiKeyInput'
 import { supabase } from '@/lib/supabase'
 
 interface Thought {
@@ -20,16 +21,19 @@ export default function Home() {
   const [modalOpen, setModalOpen] = useState(false)
   const [currentThought, setCurrentThought] = useState('')
   const [currentEncouragement, setCurrentEncouragement] = useState('')
+  
+  // 用户提供的 Kimi API Key
+  const [userApiKey, setUserApiKey] = useState('')
 
-  // ========== 方式一：普通 HTTP 请求（已注释）==========
-  // useEffect(() => { fetchThoughts() }, [])
-  // async function fetchThoughts() {
-  //   const res = await fetch('/api/thoughts')
-  //   const data = await res.json()
-  //   if (Array.isArray(data)) setThoughts(data)
-  // }
+  // 从 localStorage 读取保存的 API Key
+  useEffect(() => {
+    const savedKey = localStorage.getItem('kimi_api_key')
+    if (savedKey) {
+      setUserApiKey(savedKey)
+    }
+  }, [])
 
-  // ========== 方式二：Supabase Realtime 实时订阅 ==========
+  // ========== Supabase Realtime 实时订阅 ==========
   useEffect(() => {
     // 1. 获取初始数据
     fetchInitialThoughts()
@@ -72,18 +76,30 @@ export default function Home() {
     if (data) setThoughts(data)
   }
 
+  // 处理 API Key 变更
+  const handleApiKeyChange = useCallback((key: string) => {
+    setUserApiKey(key)
+  }, [])
+
   async function handleSubmit(content: string) {
     setIsLoading(true)
     try {
       const res = await fetch('/api/thoughts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content })
+        body: JSON.stringify({ 
+          content,
+          apiKey: userApiKey // 传递用户的 API Key
+        })
       })
       const data = await res.json()
-      if (data.error) { alert(data.error); return }
       
-      // 乐观更新（可选，因为实时订阅也会推送）
+      if (data.error) {
+        alert(data.error)
+        return
+      }
+      
+      // 乐观更新
       setThoughts(prev => {
         if (prev.find(t => t.id === data.id)) return prev
         return [data, ...prev]
@@ -112,7 +128,6 @@ export default function Home() {
         return
       }
       
-      // 本地更新（实时订阅也会推送，但本地先更新更快速）
       setThoughts(prev => prev.filter(t => t.id !== id))
       console.log('[Delete] 删除成功:', id)
     } catch (error) {
@@ -141,10 +156,15 @@ export default function Home() {
           </div>
         </div>
 
+        {/* API Key 输入 */}
+        <ApiKeyInput apiKey={userApiKey} onApiKeyChange={handleApiKeyChange} />
+
+        {/* 想法输入 */}
         <div className="mb-12">
           <ThoughtInput onSubmit={handleSubmit} isLoading={isLoading} />
         </div>
 
+        {/* 想法列表 */}
         <div>
           <div className="flex items-center justify-center gap-3 mb-8">
             <div className="h-px flex-1 bg-gradient-to-r from-transparent to-pink-300/50"></div>
@@ -172,7 +192,12 @@ export default function Home() {
         </div>
       </div>
 
-      <EncouragementModal isOpen={modalOpen} thought={currentThought} encouragement={currentEncouragement} onClose={() => setModalOpen(false)} />
+      <EncouragementModal 
+        isOpen={modalOpen} 
+        thought={currentThought} 
+        encouragement={currentEncouragement} 
+        onClose={() => setModalOpen(false)} 
+      />
     </main>
   )
 }

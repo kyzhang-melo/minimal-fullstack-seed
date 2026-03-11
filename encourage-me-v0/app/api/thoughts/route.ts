@@ -2,16 +2,8 @@ import { createServerClient } from '@/lib/supabase-server'
 import OpenAI from 'openai'
 import { NextResponse } from 'next/server'
 
-const MOONSHOT_API_KEY = process.env.MOONSHOT_API_KEY
-
-if (!MOONSHOT_API_KEY) {
-  console.error('[Config Error] 缺少 MOONSHOT_API_KEY 环境变量')
-}
-
-const moonshot = new OpenAI({
-  apiKey: MOONSHOT_API_KEY,
-  baseURL: 'https://api.moonshot.cn/v1',
-})
+// 备用 API Key（当用户未提供时使用）
+const FALLBACK_API_KEY = process.env.MOONSHOT_API_KEY
 
 // 获取所有想法
 export async function GET() {
@@ -37,7 +29,7 @@ export async function GET() {
 // 提交新想法并生成鼓励语
 export async function POST(request: Request) {
   try {
-    const { content } = await request.json()
+    const { content, apiKey: userApiKey } = await request.json()
     
     if (!content?.trim()) {
       return NextResponse.json({ error: '内容不能为空' }, { status: 400 })
@@ -45,17 +37,27 @@ export async function POST(request: Request) {
     
     console.log('[POST] 收到请求，内容:', content.substring(0, 50) + '...')
     
-    if (!MOONSHOT_API_KEY) {
-      console.error('[Config Error] MOONSHOT_API_KEY 未设置')
-      return NextResponse.json({ error: '服务器配置错误：缺少 API Key' }, { status: 500 })
+    // 优先使用用户提供的 API Key，否则使用环境变量中的备用 Key
+    const apiKey = userApiKey?.trim() || FALLBACK_API_KEY
+    
+    if (!apiKey) {
+      return NextResponse.json({ 
+        error: '缺少 Kimi API Key。请在页面顶部设置你的 API Key，或联系管理员配置。' 
+      }, { status: 401 })
     }
     
     // 调用 Moonshot 生成鼓励语
     let encouragement: string
     try {
       console.log('[Moonshot] 开始调用 Kimi API...')
+      
+      const moonshot = new OpenAI({
+        apiKey: apiKey,
+        baseURL: 'https://api.moonshot.cn/v1',
+      })
+      
       const completion = await moonshot.chat.completions.create({
-        model: 'moonshot-v1-8k',
+        model: 'kimi-k2-0905-preview',
         messages: [
           {
             role: 'system',
@@ -73,6 +75,15 @@ export async function POST(request: Request) {
       console.log('[Moonshot] 生成成功:', encouragement)
     } catch (aiError: any) {
       console.error('[Moonshot Error] 调用失败:', aiError.message || aiError)
+      
+      // 如果是 401 错误，可能是 API Key 无效
+      if (aiError.message?.includes('401') || aiError.message?.includes('Invalid')) {
+        return NextResponse.json({ 
+          error: 'Kimi API Key 无效，请检查并重新设置。' 
+        }, { status: 401 })
+      }
+      
+      // 其他错误使用默认鼓励语
       encouragement = '你的努力值得被看见，继续加油！✨'
       console.log('[Moonshot] 使用默认鼓励语:', encouragement)
     }

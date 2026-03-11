@@ -1,6 +1,7 @@
 {
-  "name": "encourage-me-v0",
+  "name": "minimal-fullstack-seed",
   "version": "0.1.0",
+  "description": "A minimal fullstack seed project demonstrating two data synchronization patterns (Pull vs Push) with Next.js, Supabase, and AI integration.",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -25,5 +26,20 @@
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
     "typescript": "^5"
-  }
+  },
+  "keywords": [
+    "nextjs",
+    "supabase",
+    "realtime",
+    "websocket",
+    "fullstack",
+    "seed-project",
+    "ai-integration",
+    "kimi",
+    "moonshot",
+    "typescript",
+    "tailwindcss"
+  ],
+  "author": "",
+  "license": "MIT"
 }
