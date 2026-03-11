@@ -49,6 +49,15 @@ export default function Home() {
           })
         }
       )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'thoughts' },
+        (payload) => {
+          console.log('[Realtime] 收到删除推送:', payload)
+          const deletedId = payload.old.id
+          setThoughts((prev) => prev.filter(t => t.id !== deletedId))
+        }
+      )
       .subscribe()
 
     // 3. 清理订阅
@@ -92,6 +101,26 @@ export default function Home() {
     }
   }
 
+  // 删除想法
+  async function handleDelete(id: string) {
+    try {
+      const res = await fetch(`/api/thoughts?id=${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      
+      if (data.error) {
+        alert(data.error)
+        return
+      }
+      
+      // 本地更新（实时订阅也会推送，但本地先更新更快速）
+      setThoughts(prev => prev.filter(t => t.id !== id))
+      console.log('[Delete] 删除成功:', id)
+    } catch (error) {
+      console.error('[Delete Error] 删除失败:', error)
+      alert('删除失败')
+    }
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-amber-50 via-pink-50 to-purple-100">
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
@@ -131,7 +160,12 @@ export default function Home() {
           ) : (
             <div className="space-y-4">
               {thoughts.map((thought) => (
-                <ThoughtCard key={thought.id} thought={thought} isNew={thought.id === newThoughtId} />
+                <ThoughtCard 
+                  key={thought.id} 
+                  thought={thought} 
+                  isNew={thought.id === newThoughtId}
+                  onDelete={handleDelete}
+                />
               ))}
             </div>
           )}

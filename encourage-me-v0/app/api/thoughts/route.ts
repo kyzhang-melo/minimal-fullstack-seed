@@ -2,14 +2,12 @@ import { createServerClient } from '@/lib/supabase-server'
 import OpenAI from 'openai'
 import { NextResponse } from 'next/server'
 
-// 检查环境变量
 const MOONSHOT_API_KEY = process.env.MOONSHOT_API_KEY
 
 if (!MOONSHOT_API_KEY) {
   console.error('[Config Error] 缺少 MOONSHOT_API_KEY 环境变量')
 }
 
-// 创建 Moonshot 客户端
 const moonshot = new OpenAI({
   apiKey: MOONSHOT_API_KEY,
   baseURL: 'https://api.moonshot.cn/v1',
@@ -19,7 +17,6 @@ const moonshot = new OpenAI({
 export async function GET() {
   try {
     const supabase = createServerClient()
-    
     const { data, error } = await supabase
       .from('thoughts')
       .select('*')
@@ -48,13 +45,12 @@ export async function POST(request: Request) {
     
     console.log('[POST] 收到请求，内容:', content.substring(0, 50) + '...')
     
-    // 检查 Moonshot API Key
     if (!MOONSHOT_API_KEY) {
       console.error('[Config Error] MOONSHOT_API_KEY 未设置')
       return NextResponse.json({ error: '服务器配置错误：缺少 API Key' }, { status: 500 })
     }
     
-    // 调用 Moonshot (Kimi) 生成鼓励语
+    // 调用 Moonshot 生成鼓励语
     let encouragement: string
     try {
       console.log('[Moonshot] 开始调用 Kimi API...')
@@ -77,7 +73,6 @@ export async function POST(request: Request) {
       console.log('[Moonshot] 生成成功:', encouragement)
     } catch (aiError: any) {
       console.error('[Moonshot Error] 调用失败:', aiError.message || aiError)
-      // 使用默认鼓励语作为 fallback
       encouragement = '你的努力值得被看见，继续加油！✨'
       console.log('[Moonshot] 使用默认鼓励语:', encouragement)
     }
@@ -94,24 +89,50 @@ export async function POST(request: Request) {
       
       if (error) {
         console.error('[Supabase Error] 插入失败:', error)
-        return NextResponse.json({ 
-          error: '数据库保存失败: ' + error.message 
-        }, { status: 500 })
+        return NextResponse.json({ error: '数据库保存失败: ' + error.message }, { status: 500 })
       }
       
       console.log('[Supabase] 保存成功, ID:', data.id)
       return NextResponse.json(data)
     } catch (dbError: any) {
       console.error('[Supabase Error] 数据库错误:', dbError)
-      return NextResponse.json({ 
-        error: '数据库错误: ' + (dbError.message || '未知错误') 
-      }, { status: 500 })
+      return NextResponse.json({ error: '数据库错误: ' + (dbError.message || '未知错误') }, { status: 500 })
     }
     
   } catch (error: any) {
     console.error('[POST Error] 服务器错误:', error)
-    return NextResponse.json({ 
-      error: '服务器内部错误: ' + (error.message || '未知错误') 
-    }, { status: 500 })
+    return NextResponse.json({ error: '服务器内部错误: ' + (error.message || '未知错误') }, { status: 500 })
+  }
+}
+
+// 删除想法
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+    
+    if (!id) {
+      return NextResponse.json({ error: '缺少 id 参数' }, { status: 400 })
+    }
+    
+    console.log('[DELETE] 删除想法, ID:', id)
+    
+    const supabase = createServerClient()
+    const { error } = await supabase
+      .from('thoughts')
+      .delete()
+      .eq('id', id)
+    
+    if (error) {
+      console.error('[Supabase Error] 删除失败:', error)
+      return NextResponse.json({ error: '删除失败: ' + error.message }, { status: 500 })
+    }
+    
+    console.log('[DELETE] 删除成功, ID:', id)
+    return NextResponse.json({ success: true, id })
+    
+  } catch (error: any) {
+    console.error('[DELETE Error] 服务器错误:', error)
+    return NextResponse.json({ error: '服务器内部错误: ' + (error.message || '未知错误') }, { status: 500 })
   }
 }
