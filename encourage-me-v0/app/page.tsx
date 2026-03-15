@@ -1,11 +1,13 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import ThoughtInput from '@/components/ThoughtInput'
 import ThoughtCard from '@/components/ThoughtCard'
 import EncouragementModal from '@/components/EncouragementModal'
 import ApiKeyInput from '@/components/ApiKeyInput'
 import { supabase } from '@/lib/supabase'
+import type { User } from '@supabase/supabase-js'
 
 interface Thought {
   id: string
@@ -15,6 +17,7 @@ interface Thought {
 }
 
 export default function Home() {
+  const router = useRouter()
   const [thoughts, setThoughts] = useState<Thought[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [newThoughtId, setNewThoughtId] = useState<string | null>(null)
@@ -24,6 +27,9 @@ export default function Home() {
   
   // 用户提供的 Kimi API Key
   const [userApiKey, setUserApiKey] = useState('')
+  
+  // 当前登录用户
+  const [user, setUser] = useState<User | null>(null)
 
   // 从 localStorage 读取保存的 API Key
   useEffect(() => {
@@ -32,6 +38,27 @@ export default function Home() {
       setUserApiKey(savedKey)
     }
   }, [])
+
+  // ========== 用户认证状态监听 ==========
+  useEffect(() => {
+    // 获取当前会话
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+    })
+
+    // 监听认证状态变化
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // 处理登出
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
 
   // ========== Supabase Realtime 实时订阅 ==========
   useEffect(() => {
@@ -153,6 +180,31 @@ export default function Home() {
           <div className="mt-2 flex items-center justify-center gap-2">
             <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
             <span className="text-xs text-green-600">实时同步已开启</span>
+          </div>
+          
+          {/* 用户信息和登出按钮 */}
+          <div className="mt-4 flex items-center justify-center gap-3">
+            {user ? (
+              <>
+                <span className="text-sm text-gray-600">
+                  👋 {user.email}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="text-sm text-gray-400 hover:text-red-500 transition-colors"
+                  title="退出登录"
+                >
+                  退出
+                </button>
+              </>
+            ) : (
+              <a
+                href="/login"
+                className="text-sm text-pink-500 hover:text-pink-600 font-medium"
+              >
+                登录 / 注册
+              </a>
+            )}
           </div>
         </div>
 
