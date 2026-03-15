@@ -68,6 +68,7 @@ const channel = supabase
 
 ### 已实现的核心功能
 
+- 🔐 **用户认证** - 基于 Supabase Auth 的邮箱 + 密码注册/登录
 - 💭 **记录想法** - 简洁优雅的输入体验
 - 🔑 **用户自定义 API Key** - 每个用户使用自己的 Kimi API Key（存储在本地）
 - 🤖 **AI 鼓励生成** - 基于 Kimi 大模型的个性化鼓励语
@@ -80,8 +81,9 @@ const channel = supabase
 | 技术 | 用途 | 学习价值 |
 |------|------|----------|
 | Next.js App Router | 全栈框架 | 前后端同构开发 |
-| Supabase | 数据库 + 实时订阅 | 现代 BaaS 服务使用 |
-| WebSocket (Realtime) | 实时数据同步 | 实时应用架构 |
+| Supabase Auth | 用户认证 | 现代身份验证系统 |
+| Supabase Realtime | 数据库 + 实时订阅 | 现代 BaaS 服务使用 |
+| WebSocket | 实时数据同步 | 实时应用架构 |
 | localStorage | 本地状态持久化 | 客户端存储策略 |
 | AI API 集成 | 大模型调用 | AIGC 应用开发 |
 
@@ -102,7 +104,13 @@ npm install
 
 ### 2. 配置环境变量
 
-创建 `.env.local` 文件：
+复制 `.env.example` 为 `.env.local` 并填写你的配置：
+
+```bash
+cp .env.example .env.local
+```
+
+编辑 `.env.local`：
 
 ```bash
 # Supabase 配置（必需）
@@ -113,11 +121,20 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
 MOONSHOT_API_KEY="sk-your-moonshot-api-key"
 ```
 
-### 3. 初始化数据库
+> 💡 **获取 Supabase 凭证**：Supabase Dashboard → Project Settings → API
+
+### 3. 启用 Supabase Auth
+
+1. 进入 Supabase Dashboard → **Authentication** → **Providers**
+2. 确保 **Email**  provider 已启用
+3. 开发阶段建议关闭 **Confirm email**（用户可立即登录）
+
+### 4. 初始化数据库
 
 在 Supabase SQL Editor 中执行：
 
 ```sql
+-- 想法表
 CREATE TABLE thoughts (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   created_at timestamptz DEFAULT now(),
@@ -125,21 +142,26 @@ CREATE TABLE thoughts (
   encouragement text NOT NULL
 );
 
+-- 允许匿名访问（如需用户隔离，请参考进阶配置）
 ALTER TABLE thoughts ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow all operations" ON thoughts
-  FOR ALL TO anon USING (true) WITH CHECK (true);
+  FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
+-- 启用实时推送
 ALTER PUBLICATION supabase_realtime ADD TABLE thoughts;
 ```
 
-### 4. 启动开发服务器
+### 5. 启动开发服务器
 
 ```bash
 npm run dev
 ```
 
-访问 http://localhost:3000
+访问：
+- 🏠 **首页**: http://localhost:3000
+- 🔐 **登录**: http://localhost:3000/login
+- 📝 **注册**: http://localhost:3000/signup
 
 ---
 
@@ -147,10 +169,11 @@ npm run dev
 
 这是一个 intentionally minimal 的**种子项目**，你可以在此基础上添加：
 
-### 🔐 用户系统
-- [ ] 添加 Supabase Auth 用户认证
+### 🔐 用户系统（已部分实现）
+- [x] ✅ 添加 Supabase Auth 用户认证
 - [ ] 实现用户隔离（只看自己的记录）
 - [ ] 添加用户资料页面
+- [ ] 添加删除账号功能
 
 ### 🎨 功能增强
 - [ ] 编辑已发布的想法
@@ -181,6 +204,12 @@ npm run dev
 ```
 minimal-fullstack-seed/
 ├── app/
+│   ├── (auth)/                # 认证路由组
+│   │   ├── layout.tsx         # 认证页面布局
+│   │   ├── login/             # 登录页 (/login)
+│   │   │   └── page.tsx
+│   │   └── signup/            # 注册页 (/signup)
+│   │       └── page.tsx
 │   ├── api/thoughts/          # API 路由（RESTful 设计）
 │   │   └── route.ts           # GET / POST / DELETE
 │   ├── globals.css            # 全局样式 + Tailwind
@@ -195,11 +224,12 @@ minimal-fullstack-seed/
 │   ├── supabase.ts            # 客户端 Supabase 实例
 │   └── supabase-server.ts     # 服务端 Supabase 实例
 ├── .env.example               # 环境变量模板
+├── .env.local                 # 本地环境变量（需创建）
 ├── next.config.ts             # Next.js 配置
 └── README.md                  # 本文件
 ```
 
-**总代码量**: ~800 行，每个文件都清晰易懂。
+**总代码量**: ~1000 行，每个文件都清晰易懂。
 
 ---
 
